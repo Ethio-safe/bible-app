@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -83,7 +84,11 @@ type authResponse struct {
 	Tokens domain.AuthTokens `json:"tokens"`
 }
 
-func (rt *Router) healthz(w http.ResponseWriter, _ *http.Request) {
+func (rt *Router) healthz(w http.ResponseWriter, r *http.Request) {
+	if err := rt.service.Ping(r.Context()); err != nil {
+		respondError(w, http.StatusServiceUnavailable, errors.New("database unavailable"))
+		return
+	}
 	respondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -98,6 +103,8 @@ func (rt *Router) register(w http.ResponseWriter, r *http.Request) {
 		status := http.StatusInternalServerError
 		if errors.Is(err, service.ErrEmailTaken) {
 			status = http.StatusConflict
+		} else if errors.Is(err, service.ErrInvalidRegistration) {
+			status = http.StatusBadRequest
 		}
 		respondError(w, status, err)
 		return
@@ -124,7 +131,9 @@ func (rt *Router) login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (rt *Router) passwordReset(w http.ResponseWriter, r *http.Request) {
-	var req struct{ Email string `json:"email"` }
+	var req struct {
+		Email string `json:"email"`
+	}
 	if err := decodeJSON(r, &req); err != nil {
 		respondError(w, http.StatusBadRequest, err)
 		return
@@ -149,7 +158,11 @@ func (rt *Router) googleLogin(w http.ResponseWriter, r *http.Request) {
 func (rt *Router) bootstrap(w http.ResponseWriter, r *http.Request) {
 	snapshot, err := rt.service.Bootstrap(userIDFromContext(r.Context()))
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, err)
+		status := http.StatusInternalServerError
+		if errors.Is(err, service.ErrNotFound) {
+			status = http.StatusUnauthorized
+		}
+		respondError(w, status, err)
 		return
 	}
 	respondJSON(w, http.StatusOK, snapshot)
@@ -163,7 +176,13 @@ func (rt *Router) push(w http.ResponseWriter, r *http.Request) {
 	}
 	snapshot, err := rt.service.Push(userIDFromContext(r.Context()), req)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, err)
+		status := http.StatusInternalServerError
+		if errors.Is(err, service.ErrNotFound) {
+			status = http.StatusUnauthorized
+		} else if errors.Is(err, service.ErrInvalidSync) {
+			status = http.StatusBadRequest
+		}
+		respondError(w, status, err)
 		return
 	}
 	respondJSON(w, http.StatusOK, snapshot)
@@ -341,9 +360,16 @@ func userIDFromContext(ctx context.Context) string {
 
 func decodeJSON(r *http.Request, dst any) error {
 	defer r.Body.Close()
+	r.Body = http.MaxBytesReader(nil, r.Body, 8<<20)
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
-	return decoder.Decode(dst)
+	if err := decoder.Decode(dst); err != nil {
+		return err
+	}
+	if decoder.Decode(new(any)) != io.EOF {
+		return errors.New("expected a single JSON object")
+	}
+	return nil
 }
 
 func respondJSON(w http.ResponseWriter, status int, payload any) {

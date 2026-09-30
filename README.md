@@ -14,7 +14,7 @@ Go HTTP API for the Bible app (the Flutter client lives in a separate repository
 - `internal/auth` – JWT handling
 - `internal/domain` – core models
 - `internal/service` – business logic and sync rules
-- `internal/store/memory` – in-memory persistence for a quick MVP
+- `internal/store/postgres` – PostgreSQL persistence
 - `internal/httpapi` – REST API and middleware
 
 ## What it supports now
@@ -28,14 +28,13 @@ Go HTTP API for the Bible app (the Flutter client lives in a separate repository
 - note search
 - soft delete + last-write-wins conflict handling
 
-## Production note
+## Persistence
 
-> **Warning: data is not persisted.** The server uses the in-memory store (`internal/store/memory`).
-> All users, notes, highlights, bookmarks, and reading positions are lost whenever the process
-> restarts or redeploys, and are not shared across multiple replicas. `DATA_FILE` is read by the
-> config but currently unused (the file store in `internal/store/filestore` is excluded from the build).
-
-For production, keep the HTTP/service layers and swap `memory` with PostgreSQL (planned; not implemented).
+PostgreSQL stores users and synced data durably. The server refuses to start without a
+working `DATABASE_URL`; it never falls back to in-memory storage. The schema is created
+on startup. Configure regular PostgreSQL backups; the server does not create backups
+itself. Data previously held by the old in-memory deployment cannot be recovered after
+its process has stopped. The Flutter client's local SQLite remains for offline reading.
 
 ## Configuration
 
@@ -45,12 +44,13 @@ For production, keep the HTTP/service layers and swap `memory` with PostgreSQL (
 | `CORS_ALLOWED_ORIGINS` | Yes for browser clients | `http://localhost:3000,http://localhost:8080` | Comma-separated list of allowed origins. |
 | `PORT` | Set by platform | – | When set (and `HTTP_ADDR` is not), the server listens on `0.0.0.0:$PORT`. |
 | `HTTP_ADDR` | No | `:8080` | Explicit listen address; overrides `PORT`. |
-| `DATA_FILE` | No | `./data/dev.json` | Currently unused. |
+| `DATABASE_URL` | **Yes** | None | PostgreSQL connection URL. On Railway, use a Postgres service reference; never put credentials in source control. |
 
 ## Run
 
-1. Copy `.env.example` to `.env`.
-2. Set `JWT_SECRET`.
+1. Create a PostgreSQL database, copy `.env.example` to `.env`, and set `DATABASE_URL`.
+2. Set `JWT_SECRET`. Environment variables are not automatically loaded from `.env` by Go;
+   export them in your shell (or use a local environment loader).
 3. Start the server:
 
 ```sh
@@ -64,22 +64,30 @@ Server defaults to `:8080`.
 The repository includes a `Dockerfile` (Go 1.24, static binary on distroless) and `railway.json`
 (Dockerfile builder, health check on `/healthz`).
 
-1. Create a Railway service from this repository (root directory `/`, branch `main`).
+1. Add a **Postgres** service to the Railway project. Create the bible-app service from
+   this repository (root directory `/`, branch `main`).
    Leave custom build/start commands empty so `railway.json` and the `Dockerfile` are used.
 2. Open **Variables → Raw Editor** and paste (replace the secret with your own):
 
    ```env
-   JWT_SECRET=<output of: openssl rand -hex 32>
+   DATABASE_URL=${{Postgres.DATABASE_URL}}
+   JWT_SECRET=<a newly generated private value>
    CORS_ALLOWED_ORIGINS=*
    ```
 
    - `JWT_SECRET` is required; the server exits on Railway if it is left at the default.
+     Rotate any secret previously shared in chat; rotation signs out existing sessions.
+   - Set `DATABASE_URL` with Railway's variable reference UI, selecting the Postgres
+     service's `DATABASE_URL`. Check the actual service name if it is not `Postgres`.
+     Do not paste or commit the database password. The service will not start until
+     the reference resolves and Postgres is reachable.
    - `CORS_ALLOWED_ORIGINS=*` allows any browser origin (safe here because auth uses bearer
      tokens, not cookies). Restrict it to your web domain(s) later, e.g. `https://app.example.com`.
      Native mobile clients are not affected by CORS.
    - Do not set `PORT` or `HTTP_ADDR`; Railway injects `PORT` and the server binds `0.0.0.0:$PORT`.
 3. Deploy, then **Settings → Networking → Generate Domain**.
 4. Verify: `curl https://<your-domain>/healthz` → `{"status":"ok"}`.
+   The health check now verifies that PostgreSQL is reachable.
 
 ## API overview
 

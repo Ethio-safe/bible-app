@@ -13,7 +13,7 @@ import (
 	"github.com/melion/fullstack-bible/backend/internal/config"
 	"github.com/melion/fullstack-bible/backend/internal/httpapi"
 	"github.com/melion/fullstack-bible/backend/internal/service"
-	"github.com/melion/fullstack-bible/backend/internal/store/memory"
+	"github.com/melion/fullstack-bible/backend/internal/store/postgres"
 )
 
 func main() {
@@ -25,7 +25,11 @@ func main() {
 		log.Print("warning: using default JWT_SECRET; set JWT_SECRET before deploying")
 	}
 
-	repo := memory.New()
+	repo, err := postgres.Open(context.Background(), cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("database startup failed: %v", err)
+	}
+	defer repo.Close()
 	jwtManager := auth.NewManager(cfg.JWTSecret, 24*time.Hour)
 	svc := service.New(repo, jwtManager)
 	handler := httpapi.NewRouter(cfg, svc, jwtManager)

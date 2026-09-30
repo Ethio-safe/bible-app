@@ -1,6 +1,8 @@
 package service
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -11,6 +13,8 @@ import (
 	"github.com/melion/fullstack-bible/backend/internal/domain"
 	"github.com/melion/fullstack-bible/backend/internal/store"
 )
+
+func (s *Service) Ping(ctx context.Context) error { return s.repo.Ping(ctx) }
 
 type Service struct {
 	repo store.Repository
@@ -23,8 +27,13 @@ func New(repo store.Repository, jwtManager *auth.Manager) *Service {
 
 func (s *Service) Register(email, password, displayName string) (domain.User, domain.AuthTokens, error) {
 	email = normalizeEmail(email)
+	if email == "" || !strings.Contains(email, "@") || len(password) < 8 {
+		return domain.User{}, domain.AuthTokens{}, ErrInvalidRegistration
+	}
 	if _, err := s.repo.FindUserByEmail(email); err == nil {
 		return domain.User{}, domain.AuthTokens{}, ErrEmailTaken
+	} else if !errors.Is(err, ErrNotFound) {
+		return domain.User{}, domain.AuthTokens{}, err
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
