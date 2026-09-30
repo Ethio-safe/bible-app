@@ -9,6 +9,7 @@ type Repository interface {
 	CreateUser(user domain.User) (domain.User, error)
 	FindUserByEmail(email string) (*domain.User, error)
 	GetUserByID(id string) (*domain.User, error)
+	UpsertGoogleUser(user domain.User) (domain.User, error)
 	Snapshot(userID string) (domain.SyncSnapshot, error)
 	ApplySync(userID string, push domain.SyncPushRequest) (domain.SyncSnapshot, error)
 	UpsertNote(userID string, note domain.Note) (domain.Note, error)

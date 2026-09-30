@@ -9,6 +9,7 @@ type Config struct {
 	HTTPAddr           string
 	JWTSecret          string
 	DatabaseURL        string
+	GoogleClientIDs    []string
 	CORSAllowedOrigins []string
 }
 
@@ -17,6 +18,7 @@ func Load() Config {
 		HTTPAddr:           httpAddr(),
 		JWTSecret:          getenv("JWT_SECRET", "change-me-in-production"),
 		DatabaseURL:        strings.TrimSpace(os.Getenv("DATABASE_URL")),
+		GoogleClientIDs:    splitCSV(os.Getenv("GOOGLE_CLIENT_IDS")),
 		CORSAllowedOrigins: splitCSV(getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:8080")),
 	}
 }

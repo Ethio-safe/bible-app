@@ -151,8 +151,18 @@ func (rt *Router) googleLogin(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, err)
 		return
 	}
-	_, _, err := rt.service.GoogleLogin(req.IDToken)
-	respondError(w, http.StatusNotImplemented, err)
+	user, tokens, err := rt.service.GoogleLogin(r.Context(), req.IDToken)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, service.ErrGoogleNotReady) {
+			status = http.StatusNotImplemented
+		} else if errors.Is(err, auth.ErrInvalidGoogleToken) {
+			status = http.StatusUnauthorized
+		}
+		respondError(w, status, err)
+		return
+	}
+	respondJSON(w, http.StatusOK, authResponse{User: user, Tokens: tokens})
 }
 
 func (rt *Router) bootstrap(w http.ResponseWriter, r *http.Request) {
