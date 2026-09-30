@@ -1,6 +1,0 @@
-# Copy to android/key.properties (git-ignored) and fill in.
-# keytool -genkey -v -keystore ~/versebible-upload.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload
-storeFile=/absolute/path/to/versebible-upload.jks
-storePassword=CHANGE_ME
-keyAlias=upload
-keyPassword=CHANGE_ME
