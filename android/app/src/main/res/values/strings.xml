@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="verse_widget_description">Today\'s verse on your current wallpaper.</string>
+    <string name="live_wallpaper_label">Verse Bible</string>
+    <string name="live_wallpaper_description">A new Bible verse every time you lock your phone.</string>
+</resources>
