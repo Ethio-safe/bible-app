@@ -32,6 +32,9 @@ func main() {
 	defer repo.Close()
 	jwtManager := auth.NewManager(cfg.JWTSecret, 24*time.Hour)
 	svc := service.New(repo, jwtManager)
+	if len(cfg.GoogleClientIDs) != 0 {
+		svc.WithGoogleVerifier(auth.GoogleTokenVerifier{ClientIDs: cfg.GoogleClientIDs})
+	}
 	handler := httpapi.NewRouter(cfg, svc, jwtManager)
 
 	server := &http.Server{

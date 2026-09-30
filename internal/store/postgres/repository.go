@@ -21,10 +21,12 @@ CREATE TABLE IF NOT EXISTS users (
 	id text PRIMARY KEY,
 	email text NOT NULL UNIQUE,
 	display_name text NOT NULL,
+	photo_url text NOT NULL DEFAULT '',
 	password_hash text NOT NULL,
 	created_at timestamptz NOT NULL,
 	updated_at timestamptz NOT NULL
 );
+ALTER TABLE users ADD COLUMN IF NOT EXISTS photo_url text NOT NULL DEFAULT '';
 CREATE TABLE IF NOT EXISTS items (
 	user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 	kind text NOT NULL CHECK (kind IN ('note','highlight','bookmark','position')),
@@ -69,8 +71,8 @@ func (r *Repository) Ping(ctx context.Context) error { return r.pool.Ping(ctx) }
 func (r *Repository) CreateUser(user domain.User) (domain.User, error) {
 	ctx, cancel := queryContext()
 	defer cancel()
-	_, err := r.pool.Exec(ctx, `INSERT INTO users (id,email,display_name,password_hash,created_at,updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6)`, user.ID, user.Email, user.DisplayName, user.PasswordHash, user.CreatedAt, user.UpdatedAt)
+	_, err := r.pool.Exec(ctx, `INSERT INTO users (id,email,display_name,photo_url,password_hash,created_at,updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)`, user.ID, user.Email, user.DisplayName, user.PhotoURL, user.PasswordHash, user.CreatedAt, user.UpdatedAt)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.ConstraintName == "users_email_key" {
@@ -81,23 +83,41 @@ func (r *Repository) CreateUser(user domain.User) (domain.User, error) {
 	return user, nil
 }
 
+func (r *Repository) UpsertGoogleUser(user domain.User) (domain.User, error) {
+	ctx, cancel := queryContext()
+	defer cancel()
+	row := r.pool.QueryRow(ctx, `INSERT INTO users (id,email,display_name,photo_url,password_hash,created_at,updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)
+		ON CONFLICT (email) DO UPDATE SET
+			display_name=EXCLUDED.display_name,
+			photo_url=EXCLUDED.photo_url,
+			updated_at=EXCLUDED.updated_at
+		RETURNING id,email,display_name,photo_url,password_hash,created_at,updated_at`,
+		user.ID, user.Email, user.DisplayName, user.PhotoURL, user.PasswordHash, user.CreatedAt, user.UpdatedAt)
+	saved, err := scanUser(row)
+	if err != nil {
+		return domain.User{}, err
+	}
+	return *saved, nil
+}
+
 func (r *Repository) FindUserByEmail(email string) (*domain.User, error) {
 	ctx, cancel := queryContext()
 	defer cancel()
-	return scanUser(r.pool.QueryRow(ctx, `SELECT id,email,display_name,password_hash,created_at,updated_at
+	return scanUser(r.pool.QueryRow(ctx, `SELECT id,email,display_name,photo_url,password_hash,created_at,updated_at
 		FROM users WHERE email=$1`, strings.ToLower(strings.TrimSpace(email))))
 }
 
 func (r *Repository) GetUserByID(id string) (*domain.User, error) {
 	ctx, cancel := queryContext()
 	defer cancel()
-	return scanUser(r.pool.QueryRow(ctx, `SELECT id,email,display_name,password_hash,created_at,updated_at
+	return scanUser(r.pool.QueryRow(ctx, `SELECT id,email,display_name,photo_url,password_hash,created_at,updated_at
 		FROM users WHERE id=$1`, id))
 }
 
 func scanUser(row pgx.Row) (*domain.User, error) {
 	var user domain.User
-	err := row.Scan(&user.ID, &user.Email, &user.DisplayName, &user.PasswordHash, &user.CreatedAt, &user.UpdatedAt)
+	err := row.Scan(&user.ID, &user.Email, &user.DisplayName, &user.PhotoURL, &user.PasswordHash, &user.CreatedAt, &user.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, service.ErrNotFound
 	}
@@ -120,7 +140,7 @@ func (r *Repository) Snapshot(userID string) (domain.SyncSnapshot, error) {
 }
 
 func snapshot(ctx context.Context, db querier, userID string) (domain.SyncSnapshot, error) {
-	user, err := scanUser(db.QueryRow(ctx, `SELECT id,email,display_name,password_hash,created_at,updated_at
+	user, err := scanUser(db.QueryRow(ctx, `SELECT id,email,display_name,photo_url,password_hash,created_at,updated_at
 		FROM users WHERE id=$1`, userID))
 	if err != nil {
 		return domain.SyncSnapshot{}, err

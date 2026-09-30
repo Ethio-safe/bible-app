@@ -21,6 +21,7 @@ Go HTTP API for the Bible app (the Flutter client lives in a separate repository
 
 - email/password registration
 - email/password login
+- verified Google ID-token login when `GOOGLE_CLIENT_IDS` is configured
 - JWT bearer auth
 - sync bootstrap endpoint
 - bulk sync push endpoint
@@ -45,6 +46,7 @@ its process has stopped. The Flutter client's local SQLite remains for offline r
 | `PORT` | Set by platform | – | When set (and `HTTP_ADDR` is not), the server listens on `0.0.0.0:$PORT`. |
 | `HTTP_ADDR` | No | `:8080` | Explicit listen address; overrides `PORT`. |
 | `DATABASE_URL` | **Yes** | None | PostgreSQL connection URL. On Railway, use a Postgres service reference; never put credentials in source control. |
+| `GOOGLE_CLIENT_IDS` | For Google sign-in | None | Comma-separated Google OAuth client IDs accepted as ID-token audiences. Use the Web client ID configured as Flutter's `serverClientId`. Without it, Google login returns 501. |
 
 ## Run
 
@@ -73,6 +75,7 @@ The repository includes a `Dockerfile` (Go 1.24, static binary on distroless) an
    DATABASE_URL=${{Postgres.DATABASE_URL}}
    JWT_SECRET=<a newly generated private value>
    CORS_ALLOWED_ORIGINS=*
+   GOOGLE_CLIENT_IDS=<your-web-client-id.apps.googleusercontent.com>
    ```
 
    - `JWT_SECRET` is required; the server exits on Railway if it is left at the default.
@@ -81,6 +84,12 @@ The repository includes a `Dockerfile` (Go 1.24, static binary on distroless) an
      service's `DATABASE_URL`. Check the actual service name if it is not `Postgres`.
      Do not paste or commit the database password. The service will not start until
      the reference resolves and Postgres is reachable.
+   - Set `GOOGLE_CLIENT_IDS` to the Web OAuth client ID from Google Cloud Console that
+     the Flutter app uses as `serverClientId`. This ID is not a client secret. The backend
+     verifies Google's signature, token expiry, issuer, audience, and verified email.
+     A verified Google email links to an existing email/password account with the same
+     email and preserves its password; new Google-only accounts receive an unusable random
+     password. A token never grants access when Google verification fails.
    - `CORS_ALLOWED_ORIGINS=*` allows any browser origin (safe here because auth uses bearer
      tokens, not cookies). Restrict it to your web domain(s) later, e.g. `https://app.example.com`.
      Native mobile clients are not affected by CORS.
@@ -97,7 +106,10 @@ The repository includes a `Dockerfile` (Go 1.24, static binary on distroless) an
 - `POST /v1/auth/register`
 - `POST /v1/auth/login`
 - `POST /v1/auth/password-reset/request`
-- `POST /v1/auth/google` → currently returns `501` placeholder
+- `POST /v1/auth/google` with `{"idToken":"..."}` → same `{user,tokens}` shape as
+  email login. Returns `401` for invalid tokens and `501` until `GOOGLE_CLIENT_IDS` is set.
+  User responses include `photoUrl` (empty string if unknown). Existing users are
+  migrated automatically on startup to include this field.
 
 ### Authenticated
 

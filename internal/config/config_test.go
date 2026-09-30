@@ -28,3 +28,11 @@ func TestCORSWildcard(t *testing.T) {
 		t.Fatalf("CORSAllowedOrigins = %v, want [*]", got)
 	}
 }
+
+func TestGoogleClientIDs(t *testing.T) {
+	t.Setenv("GOOGLE_CLIENT_IDS", " first.apps.googleusercontent.com , second.apps.googleusercontent.com ")
+	got := Load().GoogleClientIDs
+	if len(got) != 2 || got[0] != "first.apps.googleusercontent.com" || got[1] != "second.apps.googleusercontent.com" {
+		t.Fatalf("GoogleClientIDs = %v", got)
+	}
+}

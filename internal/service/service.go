@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"strings"
 	"time"
@@ -17,12 +18,18 @@ import (
 func (s *Service) Ping(ctx context.Context) error { return s.repo.Ping(ctx) }
 
 type Service struct {
-	repo store.Repository
-	jwt  *auth.Manager
+	repo   store.Repository
+	jwt    *auth.Manager
+	google auth.GoogleVerifier
 }
 
 func New(repo store.Repository, jwtManager *auth.Manager) *Service {
 	return &Service{repo: repo, jwt: jwtManager}
+}
+
+func (s *Service) WithGoogleVerifier(verifier auth.GoogleVerifier) *Service {
+	s.google = verifier
+	return s
 }
 
 func (s *Service) Register(email, password, displayName string) (domain.User, domain.AuthTokens, error) {
@@ -76,8 +83,37 @@ func (s *Service) RequestPasswordReset(email string) error {
 	return nil
 }
 
-func (s *Service) GoogleLogin(_ string) (domain.User, domain.AuthTokens, error) {
-	return domain.User{}, domain.AuthTokens{}, ErrGoogleNotReady
+func (s *Service) GoogleLogin(ctx context.Context, idToken string) (domain.User, domain.AuthTokens, error) {
+	if s.google == nil {
+		return domain.User{}, domain.AuthTokens{}, ErrGoogleNotReady
+	}
+	identity, err := s.google.Verify(ctx, idToken)
+	if err != nil {
+		return domain.User{}, domain.AuthTokens{}, err
+	}
+	secret := make([]byte, 32)
+	if _, err := rand.Read(secret); err != nil {
+		return domain.User{}, domain.AuthTokens{}, err
+	}
+	hash, err := bcrypt.GenerateFromPassword(secret, bcrypt.DefaultCost)
+	if err != nil {
+		return domain.User{}, domain.AuthTokens{}, err
+	}
+	name := identity.DisplayName
+	if name == "" {
+		name = identity.Email
+	}
+	now := time.Now().UTC()
+	user, err := s.repo.UpsertGoogleUser(domain.User{
+		ID: uuid.NewString(), Email: identity.Email, DisplayName: name,
+		PhotoURL: identity.PhotoURL, PasswordHash: string(hash),
+		CreatedAt: now, UpdatedAt: now,
+	})
+	if err != nil {
+		return domain.User{}, domain.AuthTokens{}, err
+	}
+	tokens, err := s.issueTokens(user)
+	return user, tokens, err
 }
 
 func (s *Service) Bootstrap(userID string) (domain.SyncSnapshot, error) {
