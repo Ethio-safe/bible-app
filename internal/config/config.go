@@ -8,7 +8,7 @@ import (
 type Config struct {
 	HTTPAddr           string
 	JWTSecret          string
-	DataFile           string
+	DatabaseURL        string
 	CORSAllowedOrigins []string
 }
 
@@ -16,7 +16,7 @@ func Load() Config {
 	return Config{
 		HTTPAddr:           httpAddr(),
 		JWTSecret:          getenv("JWT_SECRET", "change-me-in-production"),
-		DataFile:           getenv("DATA_FILE", "./data/dev.json"),
+		DatabaseURL:        strings.TrimSpace(os.Getenv("DATABASE_URL")),
 		CORSAllowedOrigins: splitCSV(getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:8080")),
 	}
 }

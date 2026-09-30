@@ -1,8 +1,11 @@
 package store
 
+import "context"
+
 import "github.com/melion/fullstack-bible/backend/internal/domain"
 
 type Repository interface {
+	Ping(ctx context.Context) error
 	CreateUser(user domain.User) (domain.User, error)
 	FindUserByEmail(email string) (*domain.User, error)
 	GetUserByID(id string) (*domain.User, error)
@@ -16,5 +19,4 @@ type Repository interface {
 	DeleteBookmark(userID, id string) error
 	UpsertReadingPosition(userID string, position domain.ReadingPosition) (domain.ReadingPosition, error)
 	SearchNotes(userID, query string, limit int) ([]domain.Note, error)
-
 }
