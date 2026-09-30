@@ -64,10 +64,22 @@ Server defaults to `:8080`.
 The repository includes a `Dockerfile` (Go 1.24, static binary on distroless) and `railway.json`
 (Dockerfile builder, health check on `/healthz`).
 
-1. Create a Railway service from this repository (root directory `/`).
-2. Set variables: `JWT_SECRET` (strong random value) and `CORS_ALLOWED_ORIGINS`.
-   Do not set `HTTP_ADDR`; Railway provides `PORT`.
-3. Deploy, then generate a public domain and check `GET /healthz`.
+1. Create a Railway service from this repository (root directory `/`, branch `main`).
+   Leave custom build/start commands empty so `railway.json` and the `Dockerfile` are used.
+2. Open **Variables → Raw Editor** and paste (replace the secret with your own):
+
+   ```env
+   JWT_SECRET=<output of: openssl rand -hex 32>
+   CORS_ALLOWED_ORIGINS=*
+   ```
+
+   - `JWT_SECRET` is required; the server exits on Railway if it is left at the default.
+   - `CORS_ALLOWED_ORIGINS=*` allows any browser origin (safe here because auth uses bearer
+     tokens, not cookies). Restrict it to your web domain(s) later, e.g. `https://app.example.com`.
+     Native mobile clients are not affected by CORS.
+   - Do not set `PORT` or `HTTP_ADDR`; Railway injects `PORT` and the server binds `0.0.0.0:$PORT`.
+3. Deploy, then **Settings → Networking → Generate Domain**.
+4. Verify: `curl https://<your-domain>/healthz` → `{"status":"ok"}`.
 
 ## API overview
 
